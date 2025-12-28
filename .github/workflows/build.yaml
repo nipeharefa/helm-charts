@@ -1,4 +1,4 @@
-name: Build & Push Helm Chart
+name: Build & Push Helm Chart Nipe
 
 on: push
 
