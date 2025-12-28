@@ -1,0 +1,15 @@
+name: Build & Push Helm Chart
+
+on: push
+
+permissions:
+  contents: read
+  packages: write
+
+
+jobs:
+  helm-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
