@@ -105,7 +105,7 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if or .Values.volumeMounts (and .Values.configMap.enabled .Values.configMap.mountPath) }}
+          {{- if or .Values.volumeMounts (and .Values.configMap.enabled .Values.configMap.mountPath) .Values.persistence.enabled }}
           volumeMounts:
             {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -117,8 +117,15 @@ spec:
               subPath: {{ .Values.configMap.subPath }}
               {{- end }}
             {{- end }}
+            {{- if .Values.persistence.enabled }}
+            - name: {{ .Values.persistence.name }}
+              mountPath: {{ .Values.persistence.mountPath }}
+              {{- with .Values.persistence.subPath }}
+              subPath: {{ . }}
+              {{- end }}
+            {{- end }}
           {{- end }}
-      {{- if or .Values.volumes (and .Values.configMap.enabled .Values.configMap.mountPath) }}
+      {{- if or .Values.volumes (and .Values.configMap.enabled .Values.configMap.mountPath) .Values.persistence.enabled }}
       volumes:
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
@@ -127,6 +134,11 @@ spec:
         - name: config-volume
           configMap:
             name: {{ include "go.fullname" . }}
+        {{- end }}
+        {{- if .Values.persistence.enabled }}
+        - name: {{ .Values.persistence.name }}
+          persistentVolumeClaim:
+            claimName: {{ include "go.persistenceClaimName" . }}
         {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
