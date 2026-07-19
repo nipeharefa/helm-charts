@@ -259,6 +259,40 @@ externalSecret:
   # - extract:
   #     key: prod/app/config
 
+# Prometheus/VictoriaMetrics metrics scraping.
+# Compatible with annotation-based scrape configs (e.g. the kubernetes-pods and
+# kubernetes-service-endpoints jobs in vmagent / victoria-metrics). No
+# prometheus-operator CRDs are required: discovery is driven by prometheus.io/*
+# annotations injected onto the Pod and/or Service.
+metrics:
+  # Enable metrics exposition hints. When true, injects prometheus.io/*
+  # annotations onto the Pod and/or Service (see podAnnotations /
+  # serviceAnnotations toggles below).
+  enabled: false
+  # Container port where the metrics endpoint is served. MUST match the actual
+  # containerPort: the scrape config applies `keep_if_equal` between this
+  # annotation and __meta_kubernetes_pod_container_port_number, so a mismatch
+  # causes the target to be silently dropped. Leave empty to auto-resolve from
+  # service.port (or service.ports[0].targetPort / .port when service.ports is set).
+  port: ""
+  # HTTP path serving metrics.
+  path: /metrics
+  # Scheme to scrape with: http or https.
+  scheme: http
+  # Namespace where the scraper (vmagent / victoria-metrics / prometheus) runs.
+  # Used by the ciliumNetworkPolicy `allowMonitoring` preset to whitelist ingress
+  # from this namespace. Change if your scraper lives elsewhere.
+  scrapeNamespace: monitoring
+  # Inject prometheus.io/* annotations into the Pod template.
+  # Discovered by scrape configs using `role: pod` (e.g. the kubernetes-pods job).
+  podAnnotations:
+    enabled: true
+  # Inject prometheus.io/* annotations into the Service.
+  # Discovered by scrape configs using `role: endpoints` (e.g. the
+  # kubernetes-service-endpoints job). No effect when service.enabled is false.
+  serviceAnnotations:
+    enabled: true
+
 # CiliumNetworkPolicy configuration (requires Cilium CNI installed in the cluster)
 # https://docs.cilium.io/en/stable/network/kubernetes/policy/
 ciliumNetworkPolicy:
@@ -268,6 +302,9 @@ ciliumNetworkPolicy:
   #   sameNamespace    -> ingress + egress only with endpoints in this namespace
   #   anotherNamespace -> ingress + egress with endpoints in this namespace AND
   #                       every namespace listed in `allowNamespaces`
+  #   allowMonitoring  -> same as sameNamespace, PLUS allow ingress/egress from
+  #                       the namespace named in `metrics.scrapeNamespace`
+  #                       (default "monitoring") so vmagent/prometheus can scrape
   #   custom           -> use `endpointSelector`, `ingress`, `egress` verbatim
   preset: sameNamespace
   # Namespaces to allow when preset == "anotherNamespace".

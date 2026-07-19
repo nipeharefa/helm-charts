@@ -14,6 +14,12 @@ spec:
   template:
     metadata:
       {{- $annotations := merge (dict) (.Values.podAnnotations) }}
+      {{- if and .Values.metrics.enabled .Values.metrics.podAnnotations.enabled }}
+      {{- $_ := set $annotations "prometheus.io/scrape" "true" }}
+      {{- $_ := set $annotations "prometheus.io/port" (include "go.metrics.port" .) }}
+      {{- $_ := set $annotations "prometheus.io/path" .Values.metrics.path }}
+      {{- $_ := set $annotations "prometheus.io/scheme" .Values.metrics.scheme }}
+      {{- end }}
       {{- if .Values.configMap.enabled }}
       {{- $_ := set $annotations "checksum/config" (include (print $.Template.BasePath "/configmap.yaml") . | sha256sum) }}
       {{- end }}
