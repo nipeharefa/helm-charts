@@ -14,12 +14,7 @@ If release name contains chart name it will be used as a full name.
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
-{{- $name := default .Chart.Name .Values.nameOverride }}
-{{- if contains $name .Release.Name }}
 {{- .Release.Name | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
-{{- end }}
 {{- end }}
 {{- end }}
 
@@ -58,5 +53,47 @@ Create the name of the service account to use
 {{- default (include "go.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Create the name of the SecretStore managed by this chart.
+*/}}
+{{- define "go.secretStoreName" -}}
+{{- printf "%s-store" (include "go.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Resolve the SecretStoreRef name: use the templated store when this chart creates
+one, otherwise fall back to the externally-managed store named in values.
+*/}}
+{{- define "go.secretStoreRefName" -}}
+{{- if and .Values.externalSecret.secretStore.create .Values.externalSecret.secretStore.provider }}
+{{- include "go.secretStoreName" . }}
+{{- else }}
+{{- required "externalSecret.secretStoreRef.name is required when secretStore.create is false" .Values.externalSecret.secretStoreRef.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Resolve the SecretStoreRef kind.
+*/}}
+{{- define "go.secretStoreRefKind" -}}
+{{- if and .Values.externalSecret.secretStore.create .Values.externalSecret.secretStore.provider }}
+{{- .Values.externalSecret.secretStore.kind | default "SecretStore" }}
+{{- else }}
+{{- .Values.externalSecret.secretStoreRef.kind | default "SecretStore" }}
+{{- end }}
+{{- end }}
+
+{{/*
+The name of the Secret produced by the ExternalSecret (consumed by the
+Deployment via envFrom / volumeMount). Defaults to the chart fullname.
+*/}}
+{{- define "go.externalSecretTargetName" -}}
+{{- if .Values.externalSecret.targetName }}
+{{- .Values.externalSecret.targetName | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- include "go.fullname" . }}
 {{- end }}
 {{- end }}

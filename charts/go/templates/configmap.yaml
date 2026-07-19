@@ -1,0 +1,23 @@
+{{- if .Values.configMap.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "go.fullname" . }}
+  labels:
+    {{- include "go.labels" . | nindent 4 }}
+data:
+  {{- /* Data from files/ directory */}}
+  {{- if .Values.configMap.files }}
+  {{- range .Values.configMap.files }}
+  {{- $file := $.Files.Get . }}
+  {{- if $file }}
+  {{ base . }}: |
+{{ $file | indent 4 }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  {{- /* Inline data from values */}}
+  {{- with .Values.configMap.data }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+{{- end }}
