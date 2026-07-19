@@ -2,10 +2,13 @@ name: Build & Push Helm Chart Nipe
 
 on: push
 
+# ss
 permissions:
   contents: read
   packages: write
 
+env:
+  REGISTRY: ghcr.io
 
 jobs:
   helm-release:
@@ -13,3 +16,34 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4.3.0
+        id: install
+      - name: Echo repository name using context
+        run: echo "The repository is ${{ github.repository }}"
+      - name: Helm OCI Login
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login $REGISTRY \
+            --username ${{ github.actor }} \
+            --password-stdin
+      - name: package
+        shell: bash
+        run: |
+          set -e
+          for chart in charts/*; do
+            if [ -f "$chart/Chart.yaml" ]; then
+              echo "📦 Processing chart: $chart"
+
+              helm dependency update "$chart" || true
+
+              CHART_NAME=$(yq '.name' "$chart/Chart.yaml")
+              CHART_VERSION=$(yq '.version' "$chart/Chart.yaml")
+
+              helm package "$chart"
+
+              helm push "${CHART_NAME}-${CHART_VERSION}.tgz" \
+                oci://$REGISTRY/${{ github.repository_owner }}/helm-charts
+
+            else
+              echo "⏭️ Skipping $chart (no Chart.yaml)"
+            fi
+          done

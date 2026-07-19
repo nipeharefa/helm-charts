@@ -12,7 +12,6 @@ image:
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
-sdfsdf
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
 # This is to override the chart name.
@@ -51,10 +50,22 @@ securityContext: {}
 
 # This is for setting up a service more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/
 service:
+  # Enable or disable the Service resource
+  enabled: true
   # This sets the service type more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
   type: ClusterIP
   # This sets the ports more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports
   port: 80
+  # Multiple ports configuration (optional, takes precedence over 'port' if specified)
+  # ports:
+  #   - name: http
+  #     port: 80
+  #     targetPort: 8080
+  #     protocol: TCP
+  #   - name: grpc
+  #     port: 9090
+  #     targetPort: 9090
+  #     protocol: TCP
 
 # -- Expose the service via gateway-api HTTPRoute
 # Requires Gateway API resources and suitable controller installed within the cluster
@@ -138,7 +149,114 @@ volumeMounts: []
 #   readOnly: true
 
 nodeSelector: {}
-
 tolerations: []
-
 affinity: {}
+
+# Init containers that run before the main container
+# For more info: https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
+initContainers: []
+# - name: init-myservice
+#   image: busybox:1.28
+#   command: ['sh', '-c', 'until nslookup myservice; do echo waiting for myservice; sleep 2; done;']
+# - name: init-db
+#   image: busybox:1.28
+#   command: ['sh', '-c', 'echo "Running database migrations"']
+
+# ConfigMap configuration
+# For more information checkout: https://kubernetes.io/docs/concepts/configuration/configmap/
+configMap:
+  # Enable or disable ConfigMap creation
+  enabled: false
+  # Files to include from files/ directory (relative to chart root)
+  # files:
+  #   - config/app.yaml
+  #   - config/settings.json
+  # Inline data (key-value pairs)
+  # data:
+  #   APP_CONFIG: |
+  #     key: value
+  #   settings.json: |
+  #     {"debug": true}
+  # Mount ConfigMap as volume at this path (optional)
+  # mountPath: /etc/config
+  # Mount specific file only (optional)
+  # subPath: app.yaml
+  # Inject all ConfigMap keys as environment variables
+  envFrom: false
+  # Automatically mount ConfigMap in all initContainers
+  mountInInitContainers: false
+
+# ExternalSecret configuration (requires the external-secrets controller in the cluster)
+# https://external-secrets.io/
+externalSecret:
+  # Enable ExternalSecret creation. When enabled, a Secret is synced from an
+  # external store (AWS Secrets Manager, Vault, GCP SM, Azure KV, etc.).
+  enabled: false
+  # Override the synced Secret name. Defaults to the chart fullname.
+  targetName: ""
+  # Inject all synced Secret keys as environment variables on the Deployment.
+  envFrom: false
+  # Have this chart manage the SecretStore as well. When false, you must
+  # reference an externally-managed store via secretStoreRef below.
+  secretStore:
+    create: false
+    # SecretStore or ClusterSecretStore
+    kind: SecretStore
+    # Provider config (aws/azure/gcp/vault/etc.) passed through verbatim.
+    # See https://external-secrets.io/latest/provider/aws-secrets-manager/
+    # provider: {}
+    #   aws:
+    #     service: SecretsManager
+    #     region: eu-west-1
+    #     auth:
+    #       jwt:
+    #         serviceAccountRef:
+    #           name: my-sa
+  # Reference an externally-managed store (used when secretStore.create is false).
+  secretStoreRef:
+    name: ""
+    kind: SecretStore
+  # How often to re-sync the Secret from the external store.
+  refreshInterval: 1h
+  # Target Secret options.
+  target:
+    creationPolicy: Owner
+    # Optional Secret template overrides (metadata, type, data keys, etc.)
+    # template: {}
+  # Per-key mappings from the external store to the synced Secret.
+  data: []
+  # - secretKey: API_KEY
+  #   remoteRef:
+  #     key: prod/app/api-key
+  #     property: value
+  # Pull all keys from a single external path into the synced Secret.
+  dataFrom: []
+  # - extract:
+  #     key: prod/app/config
+
+# Job configuration for running migrations or one-time tasks
+# Uses Helm hooks to run before deployment (pre-install, pre-upgrade)
+# For more info: https://kubernetes.io/docs/concepts/workloads/controllers/job/
+job:
+  enabled: false
+  migrations: []
+  # - name: migrate
+  #   # Optional: use different image (defaults to app image)
+  #   # image: "myapp:migrate"
+  #   command:
+  #     - /bin/sh
+  #     - -c
+  #     - "echo 'Running migration...'"
+  #   # Optional args
+  #   # args: ["--verbose"]
+  #   # Optional environment variables
+  #   # env:
+  #   #   - name: DB_HOST
+  #   #     value: "postgres"
+  #   # Optional: additional volumeMounts specific to this job
+  #   # volumeMounts: []
+  #   # Helm hook settings (defaults shown)
+  #   # hook: "pre-install,pre-upgrade"
+  #   # hookWeight: 0  # Lower runs first
+  #   # hookDeletePolicy: "before-hook-creation,hook-succeeded"
+  #   # backoffLimit: 1

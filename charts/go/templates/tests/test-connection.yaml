@@ -1,3 +1,4 @@
+{{- if .Values.service.enabled }}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -11,5 +12,10 @@ spec:
     - name: wget
       image: busybox
       command: ['wget']
+      {{- if .Values.service.ports }}
+      args: ['{{ include "go.fullname" . }}:{{ (index .Values.service.ports 0).port }}']
+      {{- else }}
       args: ['{{ include "go.fullname" . }}:{{ .Values.service.port }}']
+      {{- end }}
   restartPolicy: Never
+{{- end }}
