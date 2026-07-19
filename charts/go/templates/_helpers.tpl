@@ -97,3 +97,16 @@ Deployment via envFrom / volumeMount). Defaults to the chart fullname.
 {{- include "go.fullname" . }}
 {{- end }}
 {{- end }}
+
+{{/*
+Resolve the PersistentVolumeClaim name used by the Deployment:
+- when persistence.existingClaim is set, use it verbatim (skip creation)
+- otherwise default to <fullname>-<persistence.name>
+*/}}
+{{- define "go.persistenceClaimName" -}}
+{{- if .Values.persistence.existingClaim }}
+{{- .Values.persistence.existingClaim }}
+{{- else }}
+{{- printf "%s-%s" (include "go.fullname" .) .Values.persistence.name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}

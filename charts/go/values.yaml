@@ -186,6 +186,31 @@ configMap:
   # Automatically mount ConfigMap in all initContainers
   mountInInitContainers: false
 
+# PersistentVolumeClaim configuration for the Deployment.
+# When enabled, the chart renders one PVC and mounts it into the container
+# at the configured path. Set existingClaim to skip creation and bind an
+# externally-managed claim instead.
+# For more info: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
+persistence:
+  enabled: false
+  # Volume + mount name (also used to build the claim name: <fullname>-<name>)
+  name: data
+  # Container mount path.
+  mountPath: /data
+  # Optional subPath within the volume.
+  subPath: ""
+  # StorageClass to bind. Empty string uses the cluster default.
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  # Annotations applied to the rendered PersistentVolumeClaim.
+  annotations: {}
+  # Optional label selector to match specific PVs.
+  selector: {}
+  # Skip creating a PVC and use an existing claim by this name.
+  existingClaim: ""
+
 # ExternalSecret configuration (requires the external-secrets controller in the cluster)
 # https://external-secrets.io/
 externalSecret:
