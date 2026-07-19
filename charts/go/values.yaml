@@ -234,6 +234,32 @@ externalSecret:
   # - extract:
   #     key: prod/app/config
 
+# CiliumNetworkPolicy configuration (requires Cilium CNI installed in the cluster)
+# https://docs.cilium.io/en/stable/network/kubernetes/policy/
+ciliumNetworkPolicy:
+  # Enable or disable CiliumNetworkPolicy creation
+  enabled: false
+  # Preset controls the generated rules to keep values terse:
+  #   sameNamespace    -> ingress + egress only with endpoints in this namespace
+  #   anotherNamespace -> ingress + egress with endpoints in this namespace AND
+  #                       every namespace listed in `allowNamespaces`
+  #   custom           -> use `endpointSelector`, `ingress`, `egress` verbatim
+  preset: sameNamespace
+  # Namespaces to allow when preset == "anotherNamespace".
+  # Ignored for other presets.
+  allowNamespaces: []
+  # - kube-system
+  # - monitoring
+  # - gateway
+  # Endpoint selector applied to the policy (defaults to all endpoints in the
+  # namespace). Used for every preset.
+  endpointSelector: {}
+  # Custom Cilium ingress/egress rules. Used ONLY when preset == "custom".
+  # Passed through to the CiliumNetworkPolicy spec verbatim.
+  # See: https://docs.cilium.io/en/stable/network/kubernetes/policy/language/
+  ingress: []
+  egress: []
+
 # Job configuration for running migrations or one-time tasks
 # Uses Helm hooks to run before deployment (pre-install, pre-upgrade)
 # For more info: https://kubernetes.io/docs/concepts/workloads/controllers/job/

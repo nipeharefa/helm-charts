@@ -1,0 +1,50 @@
+{{- if .Values.ciliumNetworkPolicy.enabled }}
+{{- $preset := .Values.ciliumNetworkPolicy.preset | default "sameNamespace" -}}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "go.fullname" . }}
+  labels:
+    {{- include "go.labels" . | nindent 4 }}
+spec:
+  {{- with .Values.ciliumNetworkPolicy.endpointSelector }}
+  endpointSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- else }}
+  endpointSelector: {}
+  {{- end }}
+  {{- if eq $preset "sameNamespace" }}
+  ingress:
+    - fromEndpoints:
+        - {}
+  egress:
+    - toEndpoints:
+        - {}
+  {{- else if eq $preset "anotherNamespace" }}
+  ingress:
+    - fromEndpoints:
+        - {}
+        {{- range $ns := .Values.ciliumNetworkPolicy.allowNamespaces }}
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": {{ $ns }}
+        {{- end }}
+  egress:
+    - toEndpoints:
+        - {}
+        {{- range $ns := .Values.ciliumNetworkPolicy.allowNamespaces }}
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": {{ $ns }}
+        {{- end }}
+  {{- else if eq $preset "custom" }}
+  {{- with .Values.ciliumNetworkPolicy.ingress }}
+  ingress:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.ciliumNetworkPolicy.egress }}
+  egress:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- else }}
+  {{- fail (printf "Unsupported ciliumNetworkPolicy.preset %q (must be: sameNamespace, anotherNamespace, or custom)" $preset) }}
+  {{- end }}
+{{- end }}
