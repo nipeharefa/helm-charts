@@ -35,6 +35,18 @@ spec:
         - matchLabels:
             "k8s:io.kubernetes.pod.namespace": {{ $ns }}
         {{- end }}
+  {{- else if eq $preset "allowMonitoring" }}
+  {{- $ns := .Values.metrics.scrapeNamespace | default "monitoring" }}
+  ingress:
+    - fromEndpoints:
+        - {}
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": {{ $ns }}
+  egress:
+    - toEndpoints:
+        - {}
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": {{ $ns }}
   {{- else if eq $preset "custom" }}
   {{- with .Values.ciliumNetworkPolicy.ingress }}
   ingress:
@@ -45,6 +57,6 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   {{- else }}
-  {{- fail (printf "Unsupported ciliumNetworkPolicy.preset %q (must be: sameNamespace, anotherNamespace, or custom)" $preset) }}
+  {{- fail (printf "Unsupported ciliumNetworkPolicy.preset %q (must be: sameNamespace, anotherNamespace, allowMonitoring, or custom)" $preset) }}
   {{- end }}
 {{- end }}

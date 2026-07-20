@@ -110,3 +110,22 @@ Resolve the PersistentVolumeClaim name used by the Deployment:
 {{- printf "%s-%s" (include "go.fullname" .) .Values.persistence.name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 {{- end }}
+
+{{/*
+Resolve the container port number used to serve metrics. This MUST match the
+actual containerPort declared on the Pod: vmagent / victoria-metrics scrape
+configs commonly apply `keep_if_equal` between __meta_kubernetes_pod_annotation_prometheus_io_port
+and __meta_kubernetes_pod_container_port_number, so any mismatch silently drops
+the target. Resolution order: metrics.port (explicit) -> service.ports[0].targetPort
+-> service.ports[0].port -> service.port.
+*/}}
+{{- define "go.metrics.port" -}}
+{{- if .Values.metrics.port }}
+{{- .Values.metrics.port }}
+{{- else if .Values.service.ports }}
+{{- $first := index .Values.service.ports 0 }}
+{{- default $first.port $first.targetPort }}
+{{- else }}
+{{- .Values.service.port }}
+{{- end }}
+{{- end }}

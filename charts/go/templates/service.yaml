@@ -5,6 +5,13 @@ metadata:
   name: {{ include "go.fullname" . }}
   labels:
     {{- include "go.labels" . | nindent 4 }}
+  {{- if and .Values.metrics.enabled .Values.metrics.serviceAnnotations.enabled }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ include "go.metrics.port" . | quote }}
+    prometheus.io/path: {{ .Values.metrics.path }}
+    prometheus.io/scheme: {{ .Values.metrics.scheme }}
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
   ports:
