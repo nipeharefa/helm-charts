@@ -76,41 +76,54 @@ Full step reference: https://argo-rollouts.readthedocs.io/en/stable/features/can
 ## Traffic routing (stable + canary Services)
 
 Out of the box the canary shifts weight purely by adjusting ReplicaSet sizes
-(no traffic splitting). To shift at the traffic layer, set
-`rollout.canary.trafficRouting` to a provider. The chart then renders **two**
-Services — a stable one (named `<release>` by default) and a canary one
-(`<release>-canary`) — and injects their names into the Rollout:
+(no traffic splitting). To shift at the traffic layer, enable
+`rollout.canary.trafficRouting.enabled` and configure exactly **one**
+provider. The chart then renders **two** Services — a stable one (named
+`<release>` by default) and a canary one (`<release>-canary`) — and injects
+their names into the Rollout.
 
 ```yaml
 rollout:
   enabled: true
   canary:
     trafficRouting:
+      enabled: true
       nginx:
         stableIngress: primary
 ```
 
-Supported providers: `nginx`, `alb`, `smi`, `istio`, `traefik`, `ambassador`,
-`app-mesh`, `google`, `sfx`, `gatewayAPI` — see
-https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/
+Supported providers (pick **exactly one** — the chart fails `helm install` if
+zero or more than one is set):
+
+- **Built-in:** `nginx`, `alb`, `smi`, `istio`, `traefik`, `ambassador`,
+  `app-mesh`, `google`, `sfx` — see
+  https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/
+- **Plugin:** `plugins."argoproj-labs/gatewayAPI"` — see
+  [Gateway API traffic splitting](#gateway-api-traffic-splitting) below.
 
 The chart does **not** provision the upstream routing object itself (the nginx
 Ingress, the Istio VirtualService, etc.) — bring your own. Only the stable +
 canary Services and the Rollout's `trafficRouting` block are templated.
 
-**Exception — Gateway API:** when `rollout.canary.trafficRouting.gatewayAPI` is
-set together with `httpRoute.enabled: true`, the chart renders the HTTPRoute
-itself with dual `backendRefs` (stable + canary). See
-[Gateway API traffic splitting](#gateway-api-traffic-splitting) below.
+**Exception — Gateway API:** the chart renders the HTTPRoute itself (with dual
+`backendRefs`) when `httpRoute.enabled: true` and the Gateway API plugin is
+the active provider. See below.
 
 ### Gateway API traffic splitting
 
-[Gateway API](https://gateway-api.sigs.k8s.io/) is supported natively via Argo
-Rollouts' `gatewayAPI` provider (stable since Argo Rollouts v1.5). Unlike the
-other providers, the chart renders the routing object itself (the HTTPRoute)
-with **two `backendRefs`** pointing at the auto-provisioned stable and canary
-Services. Argo Rollouts patches the weights at runtime as the canary
-progresses.
+> **Note:** Gateway API is **not** a built-in Argo Rollouts provider. It ships
+> as an external plugin
+> ([argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi](https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi))
+> which the chart wires up under `trafficRouting.plugins."argoproj-labs/gatewayAPI"`.
+> Per upstream docs the plugin is **alpha-quality**. Make sure the plugin is
+> installed before enabling this — see
+> [Installing the Gateway API plugin](#installing-the-gateway-api-plugin).
+
+[Gateway API](https://gateway-api.sigs.k8s.io/) is supported via the plugin
+above. Unlike the other providers, the chart renders the routing object itself
+(the HTTPRoute) with **two `backendRefs`** pointing at the auto-provisioned
+stable and canary Services. The Argo Rollouts controller patches the weights
+at runtime as the canary progresses.
 
 Supported Gateway controllers (any that implement the Gateway API HTTPRoute
 weight-based splitting contract):
@@ -141,16 +154,19 @@ rollout:
   enabled: true
   canary:
     trafficRouting:
-      gatewayAPI:
-        # httpRoute: ""    # defaults to chart fullname (the HTTPRoute above)
-        # namespace: ""   # defaults to the Rollout's namespace
+      enabled: true
+      plugins:
+        argoproj-labs/gatewayAPI:
+          # httpRoute: ""    # defaults to chart fullname (the HTTPRoute above)
+          # namespace: ""   # defaults to the Rollout's namespace
     steps:
       - setWeight: 20
       - pause: { duration: 2m }
       - setWeight: 100
 ```
 
-Rendered HTTPRoute (initial state — Argo patches the weights during canary):
+Rendered HTTPRoute (initial state — the plugin patches the weights during
+canary):
 
 ```yaml
 spec:
@@ -167,10 +183,88 @@ spec:
 
 Notes:
 
-- **Both `httpRoute.enabled: true` AND `rollout.canary.trafficRouting.gatewayAPI` must be set.** Either alone renders a single-backend HTTPRoute.
-- **`gatewayAPI.httpRoute` defaults to the chart fullname.** Override only when pointing at an externally-managed HTTPRoute (in which case disable `httpRoute.enabled` and supply your own dual-backend HTTPRoute).
-- **Cross-namespace HTTPRoutes**: set `gatewayAPI.namespace` if the HTTPRoute lives outside the Rollout's namespace. The chart renders HTTPRoutes in the release namespace.
+- **Three conditions for dual backendRefs:** `httpRoute.enabled: true` AND
+  `rollout.canary.trafficRouting.enabled: true` AND the Gateway API plugin is
+  the active provider. Missing any one renders a single-backend HTTPRoute.
+- **`httpRoute` field defaults to chart fullname.** Override only when pointing
+  at an externally-managed HTTPRoute (in which case disable `httpRoute.enabled`
+  and supply your own dual-backend HTTPRoute).
+- **Cross-namespace HTTPRoutes**: set `namespace` under the plugin block if the
+  HTTPRoute lives outside the Rollout's namespace. The chart renders HTTPRoutes
+  in the release namespace.
 - **TCPRoute / GRPCRoute** are out of scope — chart renders HTTPRoute only.
+
+### Installing the Gateway API plugin
+
+Gateway API support requires three things beyond `helm install`:
+
+#### 1. Plugin binary in the argo-rollouts controller
+
+Register the plugin in the `argo-rollouts-config` ConfigMap. Either mount the
+binary into the controller container or let the controller download it at
+startup:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argo-rollouts-config
+  namespace: argo-rollouts
+data:
+  trafficRouterPlugins: |-
+    - name: "argoproj-labs/gatewayAPI"
+      location: "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.16.0/rollouts-plugin-trafficrouter-gatewayapi-linux-amd64"
+```
+
+Then restart the controller:
+
+```bash
+kubectl rollout restart deployment argo-rollouts -n argo-rollouts
+```
+
+#### 2. RBAC for the controller to edit HTTPRoutes
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argo-rollouts-gatewayapi
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes", "grpcroutes", "tcproutes", "tlsroutes"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argo-rollouts-gatewayapi
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argo-rollouts-gatewayapi
+subjects:
+  - kind: ServiceAccount
+    name: argo-rollouts
+    namespace: argo-rollouts
+```
+
+#### 3. Argo CD `ignoreDifferences` (only if you use Argo CD)
+
+While a canary is running, the plugin mutates the HTTPRoute live (weights +
+an `rollouts.argoproj.io/gatewayapi-canary=in-progress` label). Argo CD will
+otherwise fight the controller trying to revert those changes. Configure the
+Argo CD ConfigMap (Helm values):
+
+```yaml
+configs:
+  cm:
+    resource.customizations.ignoreDifferences.gateway.networking.k8s.io_HTTPRoute: |
+      jqPathExpressions:
+        - select(.metadata.labels["rollouts.argoproj.io/gatewayapi-canary"] == "in-progress") | .spec.rules
+```
+
+Apply the same snippet to `GRPCRoute`, `TCPRoute`, `TLSRoute` if you manage
+them.
 
 ## Analysis (Prometheus / VictoriaMetrics)
 
@@ -240,9 +334,10 @@ https://argo-rollouts.readthedocs.io/en/stable/features/canary/#hpas
 | `rollout.canary.maxSurge`                  | `"25%"`                              | Canary `maxSurge`.                                                          |
 | `rollout.canary.maxUnavailable`            | `0`                                  | Canary `maxUnavailable`.                                                    |
 | `rollout.canary.steps`                     | (see `values.yaml`)                  | Ordered canary step list (setWeight / pause / experiment / analysis / ...). |
-| `rollout.canary.trafficRouting`            | `{}`                                 | Traffic provider config (nginx/alb/istio/gatewayAPI/...). Empty = ReplicaSet canary.  |
-| `rollout.canary.trafficRouting.gatewayAPI.httpRoute` | `""`                       | HTTPRoute name for the gatewayAPI provider. Defaults to `<fullname>`.       |
-| `rollout.canary.trafficRouting.gatewayAPI.namespace` | `""`                       | Namespace of the HTTPRoute (gatewayAPI provider). Defaults to Rollout ns.   |
+| `rollout.canary.trafficRouting.enabled`   | `false`                              | Master toggle for traffic splitting. False = ReplicaSet canary.             |
+| `rollout.canary.trafficRouting.<provider>` | —                                   | Built-in provider config (nginx / alb / istio / ...). Pick exactly one.     |
+| `rollout.canary.trafficRouting.plugins."argoproj-labs/gatewayAPI".httpRoute` | `""` | HTTPRoute name (Gateway API plugin). Defaults to `<fullname>`.   |
+| `rollout.canary.trafficRouting.plugins."argoproj-labs/gatewayAPI".namespace` | `""` | Namespace of the HTTPRoute (Gateway API plugin). Defaults to Rollout ns. |
 | `rollout.canary.stableService`             | `""`                                 | Override stable Service name (default `<fullname>`).                       |
 | `rollout.canary.canaryService`             | `""`                                 | Override canary Service name (default `<fullname>-canary`).                |
 | `rollout.analysis.enabled`                 | `false`                              | Render AnalysisTemplates and wire them into the Rollout.                    |

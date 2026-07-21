@@ -22,7 +22,7 @@ spec:
 {{- if .Values.service.enabled }}
 {{- $metricsAnnotations := and .Values.metrics.enabled .Values.metrics.serviceAnnotations.enabled }}
 
-{{- if and .Values.rollout.enabled .Values.rollout.canary.trafficRouting }}
+{{- if and .Values.rollout.enabled .Values.rollout.canary.trafficRouting.enabled }}
 {{- /* Canary traffic-splitting mode: render a stable Service + a canary Service.
        Argo Rollouts mutates their selectors at runtime to inject its
        rollouts-pod-template-hash label so each routes to the right ReplicaSet. */}}

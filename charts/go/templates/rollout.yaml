@@ -1,4 +1,6 @@
 {{- if .Values.rollout.enabled }}
+{{- /* Run provider validation unconditionally so misconfigurations fail loudly. */}}
+{{- $_ := include "go.canary.activeProvider" . -}}
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
@@ -17,18 +19,20 @@ spec:
     {{- include "go.podTemplateSpec" . | nindent 4 }}
   strategy:
     canary:
-      {{- if .Values.rollout.canary.trafficRouting }}
+      {{- if .Values.rollout.canary.trafficRouting.enabled }}
       canaryService: {{ include "go.canary.canaryService" . }}
       stableService: {{ include "go.canary.stableService" . }}
       {{- end }}
       maxSurge: {{ .Values.rollout.canary.maxSurge }}
       maxUnavailable: {{ .Values.rollout.canary.maxUnavailable }}
-      {{- with .Values.rollout.canary.trafficRouting }}
-      {{- $tr := deepCopy . }}
-      {{- if $tr.gatewayAPI }}
-      {{- if not $tr.gatewayAPI.httpRoute }}
-      {{- $_ := set $tr.gatewayAPI "httpRoute" (include "go.fullname" $) }}
-      {{- end }}
+      {{- if .Values.rollout.canary.trafficRouting.enabled }}
+      {{- $tr := deepCopy .Values.rollout.canary.trafficRouting }}
+      {{- /* Strip chart-only fields before handing off to Argo Rollouts. */}}
+      {{- $_ := unset $tr "enabled" }}
+      {{- $plugins := default (dict) $tr.plugins }}
+      {{- $plugin := index $plugins "argoproj-labs/gatewayAPI" }}
+      {{- if and $plugin (not $plugin.httpRoute) }}
+      {{- $_ := set $plugin "httpRoute" (include "go.fullname" .) }}
       {{- end }}
       trafficRouting:
         {{- toYaml $tr | nindent 8 }}

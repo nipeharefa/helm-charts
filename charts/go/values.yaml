@@ -143,9 +143,10 @@ autoscaling:
 #     Deployment. The two are mutually exclusive: the Deployment is removed.
 #   - The HPA (if `autoscaling.enabled` is true) is rewired to target the
 #     Rollout via scaleTargetRef.
-#   - The Service is split into a stable + canary pair when `canary.trafficRouting`
-#     is configured; otherwise the single Service is retained and the canary
-#     shifts weight purely by ReplicaSet sizing.
+#   - The Service is split into a stable + canary pair when both
+#     `rollout.enabled` and `rollout.canary.trafficRouting.enabled` are true;
+#     otherwise the single Service is retained and the canary shifts weight
+#     purely by ReplicaSet sizing.
 #
 # MIGRATION NOTE: switching an existing release from Deployment to Rollout
 # leaves the old Deployment object in the cluster (Helm does not delete
@@ -173,28 +174,41 @@ rollout:
       - setWeight: 50
       - pause: { duration: 30s }
       - setWeight: 100
-    # Traffic routing provider config. When non-empty, the chart renders a
-    # stable + canary Service pair and the Rollout drives traffic split via the
-    # configured provider. Supported keys: nginx | alb | smi | istio | traefik |
-    # ambassador | app-mesh | google | sfx | gatewayAPI (see Argo Rollouts docs
-    # for shape).
+    # Traffic routing provider configuration. When `enabled` is true, the chart
+    # renders a stable + canary Service pair and the Rollout drives traffic
+    # splitting via the configured provider. When false, the Rollout shifts
+    # canary weight purely by ReplicaSet sizing (single Service).
+    #
+    # Exactly ONE provider must be set when `enabled: true`. Setting 2+ will
+    # fail `helm template` / `helm install` with a clear error.
+    #
+    # Built-in providers (see Argo Rollouts docs for the full shape):
+    #   nginx | alb | smi | istio | traefik | ambassador | app-mesh | google | sfx
+    #
+    # Plugin providers:
+    #   plugins."argoproj-labs/gatewayAPI"   (Gateway API — requires the
+    #   external plugin installed in the argo-rollouts controller, see
+    #   charts/go/README.md "Installing the Gateway API plugin")
     #
     # Examples:
     #
-    # nginx ingress controller:
+    # nginx ingress controller (built-in):
     # trafficRouting:
+    #   enabled: true
     #   nginx:
     #     stableIngress: primary
     #
-    # Gateway API (Envoy Gateway / Istio / GKE / Kong / nginx Gateway Fabric /
-    # Cilium — requires the chart's httpRoute.enabled=true). When `httpRoute`
-    # is omitted it defaults to the chart fullname (the HTTPRoute rendered by
-    # this chart). `namespace` defaults to the Rollout's namespace.
+    # Gateway API plugin (Envoy Gateway / Istio / GKE / Kong / nginx Gateway
+    # Fabric / Cilium / etc. — also requires httpRoute.enabled=true so the chart
+    # renders the dual-backendRef HTTPRoute):
     # trafficRouting:
-    #   gatewayAPI:
-    #     httpRoute: ""        # defaults to <fullname>
-    #     namespace: ""        # defaults to the Rollout namespace
-    trafficRouting: {}
+    #   enabled: true
+    #   plugins:
+    #     argoproj-labs/gatewayAPI:
+    #       httpRoute: ""        # defaults to <fullname>
+    #       namespace: ""        # defaults to the Rollout namespace
+    trafficRouting:
+      enabled: false
     # Optional overrides for the auto-provisioned stable/canary Service names.
     # Defaults: stable -> <fullname>, canary -> <fullname>-canary.
     stableService: ""
