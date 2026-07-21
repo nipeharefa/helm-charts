@@ -176,11 +176,24 @@ rollout:
     # Traffic routing provider config. When non-empty, the chart renders a
     # stable + canary Service pair and the Rollout drives traffic split via the
     # configured provider. Supported keys: nginx | alb | smi | istio | traefik |
-    # ambassador | app-mesh | google | sfx (see Argo Rollouts docs for shape).
-    # Example (nginx):
+    # ambassador | app-mesh | google | sfx | gatewayAPI (see Argo Rollouts docs
+    # for shape).
+    #
+    # Examples:
+    #
+    # nginx ingress controller:
     # trafficRouting:
     #   nginx:
     #     stableIngress: primary
+    #
+    # Gateway API (Envoy Gateway / Istio / GKE / Kong / nginx Gateway Fabric /
+    # Cilium — requires the chart's httpRoute.enabled=true). When `httpRoute`
+    # is omitted it defaults to the chart fullname (the HTTPRoute rendered by
+    # this chart). `namespace` defaults to the Rollout's namespace.
+    # trafficRouting:
+    #   gatewayAPI:
+    #     httpRoute: ""        # defaults to <fullname>
+    #     namespace: ""        # defaults to the Rollout namespace
     trafficRouting: {}
     # Optional overrides for the auto-provisioned stable/canary Service names.
     # Defaults: stable -> <fullname>, canary -> <fullname>-canary.

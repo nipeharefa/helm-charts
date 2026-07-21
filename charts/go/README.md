@@ -91,12 +91,86 @@ rollout:
 ```
 
 Supported providers: `nginx`, `alb`, `smi`, `istio`, `traefik`, `ambassador`,
-`app-mesh`, `google`, `sfx` — see
+`app-mesh`, `google`, `sfx`, `gatewayAPI` — see
 https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/
 
 The chart does **not** provision the upstream routing object itself (the nginx
 Ingress, the Istio VirtualService, etc.) — bring your own. Only the stable +
 canary Services and the Rollout's `trafficRouting` block are templated.
+
+**Exception — Gateway API:** when `rollout.canary.trafficRouting.gatewayAPI` is
+set together with `httpRoute.enabled: true`, the chart renders the HTTPRoute
+itself with dual `backendRefs` (stable + canary). See
+[Gateway API traffic splitting](#gateway-api-traffic-splitting) below.
+
+### Gateway API traffic splitting
+
+[Gateway API](https://gateway-api.sigs.k8s.io/) is supported natively via Argo
+Rollouts' `gatewayAPI` provider (stable since Argo Rollouts v1.5). Unlike the
+other providers, the chart renders the routing object itself (the HTTPRoute)
+with **two `backendRefs`** pointing at the auto-provisioned stable and canary
+Services. Argo Rollouts patches the weights at runtime as the canary
+progresses.
+
+Supported Gateway controllers (any that implement the Gateway API HTTPRoute
+weight-based splitting contract):
+
+- Envoy Gateway
+- Istio
+- GKE Gateway
+- Kong Gateway
+- nginx Gateway Fabric
+- Cilium
+- (others implementing the same contract)
+
+```yaml
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: my-gateway
+      sectionName: http
+  hostnames:
+    - app.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+
+rollout:
+  enabled: true
+  canary:
+    trafficRouting:
+      gatewayAPI:
+        # httpRoute: ""    # defaults to chart fullname (the HTTPRoute above)
+        # namespace: ""   # defaults to the Rollout's namespace
+    steps:
+      - setWeight: 20
+      - pause: { duration: 2m }
+      - setWeight: 100
+```
+
+Rendered HTTPRoute (initial state — Argo patches the weights during canary):
+
+```yaml
+spec:
+  rules:
+    - matches: [...]
+      backendRefs:
+        - name: app            # stable Service
+          port: 80
+          weight: 100
+        - name: app-canary     # canary Service
+          port: 80
+          weight: 0
+```
+
+Notes:
+
+- **Both `httpRoute.enabled: true` AND `rollout.canary.trafficRouting.gatewayAPI` must be set.** Either alone renders a single-backend HTTPRoute.
+- **`gatewayAPI.httpRoute` defaults to the chart fullname.** Override only when pointing at an externally-managed HTTPRoute (in which case disable `httpRoute.enabled` and supply your own dual-backend HTTPRoute).
+- **Cross-namespace HTTPRoutes**: set `gatewayAPI.namespace` if the HTTPRoute lives outside the Rollout's namespace. The chart renders HTTPRoutes in the release namespace.
+- **TCPRoute / GRPCRoute** are out of scope — chart renders HTTPRoute only.
 
 ## Analysis (Prometheus / VictoriaMetrics)
 
@@ -166,7 +240,9 @@ https://argo-rollouts.readthedocs.io/en/stable/features/canary/#hpas
 | `rollout.canary.maxSurge`                  | `"25%"`                              | Canary `maxSurge`.                                                          |
 | `rollout.canary.maxUnavailable`            | `0`                                  | Canary `maxUnavailable`.                                                    |
 | `rollout.canary.steps`                     | (see `values.yaml`)                  | Ordered canary step list (setWeight / pause / experiment / analysis / ...). |
-| `rollout.canary.trafficRouting`            | `{}`                                 | Traffic provider config (nginx/alb/istio/...). Empty = ReplicaSet canary.  |
+| `rollout.canary.trafficRouting`            | `{}`                                 | Traffic provider config (nginx/alb/istio/gatewayAPI/...). Empty = ReplicaSet canary.  |
+| `rollout.canary.trafficRouting.gatewayAPI.httpRoute` | `""`                       | HTTPRoute name for the gatewayAPI provider. Defaults to `<fullname>`.       |
+| `rollout.canary.trafficRouting.gatewayAPI.namespace` | `""`                       | Namespace of the HTTPRoute (gatewayAPI provider). Defaults to Rollout ns.   |
 | `rollout.canary.stableService`             | `""`                                 | Override stable Service name (default `<fullname>`).                       |
 | `rollout.canary.canaryService`             | `""`                                 | Override canary Service name (default `<fullname>-canary`).                |
 | `rollout.analysis.enabled`                 | `false`                              | Render AnalysisTemplates and wire them into the Rollout.                    |

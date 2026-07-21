@@ -181,6 +181,19 @@ Canary Service name used by the canary Rollout's trafficRouting. Defaults to
 {{- end }}
 
 {{/*
+HTTPRoute name referenced by the canary Rollout's gatewayAPI trafficRouting.
+Defaults to the chart fullname (the HTTPRoute rendered by this chart); override
+via rollout.canary.trafficRouting.gatewayAPI.httpRoute.
+*/}}
+{{- define "go.canary.httpRouteName" -}}
+{{- $override := "" }}
+{{- with .Values.rollout.canary.trafficRouting.gatewayAPI }}
+{{- $override = .httpRoute }}
+{{- end }}
+{{- default (include "go.fullname" .) $override }}
+{{- end }}
+
+{{/*
 AnalysisTemplate name rendered by this chart for a given user-supplied entry.
 Format: <fullname>-<entry.name>. Deterministic so the Rollout can reference it.
 */}}
