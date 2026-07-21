@@ -183,14 +183,52 @@ Canary Service name used by the canary Rollout's trafficRouting. Defaults to
 {{/*
 HTTPRoute name referenced by the canary Rollout's gatewayAPI trafficRouting.
 Defaults to the chart fullname (the HTTPRoute rendered by this chart); override
-via rollout.canary.trafficRouting.gatewayAPI.httpRoute.
+via rollout.canary.trafficRouting.plugins."argoproj-labs/gatewayAPI".httpRoute.
+
+Note: the plugin name contains a slash, so the value MUST be accessed via the
+`index` function — dotted access (`.plugins.argoproj-labs/gatewayAPI`) would
+be parsed as nested keys.
 */}}
 {{- define "go.canary.httpRouteName" -}}
 {{- $override := "" }}
-{{- with .Values.rollout.canary.trafficRouting.gatewayAPI }}
+{{- $plugins := default (dict) .Values.rollout.canary.trafficRouting.plugins }}
+{{- with (index $plugins "argoproj-labs/gatewayAPI") }}
 {{- $override = .httpRoute }}
 {{- end }}
 {{- default (include "go.fullname" .) $override }}
+{{- end }}
+
+{{/*
+Validates rollout.canary.trafficRouting and returns the active provider name.
+
+Returns one of: "" | "nginx" | "alb" | "smi" | "istio" | "traefik" |
+"ambassador" | "app-mesh" | "google" | "sfx" | "gatewayapi"
+
+Fails the render when:
+  - rollout.canary.trafficRouting.enabled is true but no provider is set
+  - rollout.canary.trafficRouting.enabled is true and 2+ providers are set
+
+This helper MUST be invoked (even if its output is discarded) on every code
+path that touches trafficRouting so that the validation runs unconditionally.
+*/}}
+{{- define "go.canary.activeProvider" -}}
+{{- $providers := list -}}
+{{- range $k, $v := .Values.rollout.canary.trafficRouting }}
+{{- if and (ne $k "enabled") (ne $k "plugins") $v }}
+{{- $providers = append $providers $k }}
+{{- end }}
+{{- end }}
+{{- $plugins := default (dict) .Values.rollout.canary.trafficRouting.plugins }}
+{{- if (index $plugins "argoproj-labs/gatewayAPI") }}
+{{- $providers = append $providers "gatewayapi" }}
+{{- end }}
+{{- if and .Values.rollout.canary.trafficRouting.enabled (eq (len $providers) 0) }}
+{{- fail "rollout.canary.trafficRouting.enabled is true but no provider is configured. Set exactly one of: nginx | alb | smi | istio | traefik | ambassador | app-mesh | google | sfx | plugins.\"argoproj-labs/gatewayAPI\"" }}
+{{- end }}
+{{- if gt (len $providers) 1 }}
+{{- fail (printf "rollout.canary.trafficRouting: only one provider is allowed, got %d: %v" (len $providers) $providers) }}
+{{- end }}
+{{- if $providers }}{{ index $providers 0 }}{{ end }}
 {{- end }}
 
 {{/*
