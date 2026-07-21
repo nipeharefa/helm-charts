@@ -135,6 +135,90 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   # targetMemoryUtilizationPercentage: 80
 
+# Argo Rollouts configuration (requires the argo-rollouts controller installed
+# in the cluster: https://argo-rollouts.readthedocs.io/).
+#
+# When `rollout.enabled` is true:
+#   - This chart renders a Rollout (argoproj.io/v1alpha1) instead of a
+#     Deployment. The two are mutually exclusive: the Deployment is removed.
+#   - The HPA (if `autoscaling.enabled` is true) is rewired to target the
+#     Rollout via scaleTargetRef.
+#   - The Service is split into a stable + canary pair when `canary.trafficRouting`
+#     is configured; otherwise the single Service is retained and the canary
+#     shifts weight purely by ReplicaSet sizing.
+#
+# MIGRATION NOTE: switching an existing release from Deployment to Rollout
+# leaves the old Deployment object in the cluster (Helm does not delete
+# resources that are no longer rendered). After the first `helm upgrade`
+# that enables rollout, manually remove the orphan:
+#   kubectl delete deployment <fullname> -n <namespace>
+rollout:
+  enabled: false
+  # Desired replica count for the Rollout. Falls back to `replicaCount` when
+  # empty. Ignored when `autoscaling.enabled` is true (HPA owns the count).
+  replicas: 1
+  revisionHistoryLimit: 10
+  canary:
+    # MaxSurge / maxUnavailable passed verbatim to the Rollout's canary
+    # strategy. Defaults match Kubernetes RollingUpdate (25% surge, 0 unavailable).
+    maxSurge: "25%"
+    maxUnavailable: 0
+    # Ordered list of canary steps (setWeight / pause / experiment / analysis /
+    # setCanaryScale / plugin). Rendered verbatim under `strategy.canary.steps`.
+    # When `analysis.enabled` is true and `analysis.mode == "step"`, an analysis
+    # step referencing each rendered AnalysisTemplate is prepended to this list.
+    steps:
+      - setWeight: 25
+      - pause: { duration: 30s }
+      - setWeight: 50
+      - pause: { duration: 30s }
+      - setWeight: 100
+    # Traffic routing provider config. When non-empty, the chart renders a
+    # stable + canary Service pair and the Rollout drives traffic split via the
+    # configured provider. Supported keys: nginx | alb | smi | istio | traefik |
+    # ambassador | app-mesh | google | sfx (see Argo Rollouts docs for shape).
+    # Example (nginx):
+    # trafficRouting:
+    #   nginx:
+    #     stableIngress: primary
+    trafficRouting: {}
+    # Optional overrides for the auto-provisioned stable/canary Service names.
+    # Defaults: stable -> <fullname>, canary -> <fullname>-canary.
+    stableService: ""
+    canaryService: ""
+  analysis:
+    # Master toggle. When true, AnalysisTemplate CRDs are rendered from
+    # `templates` and referenced by the Rollout. When false, no analysis runs
+    # and the canary advances purely via `steps` (setWeight / pause).
+    enabled: false
+    # How analysis is wired into the Rollout:
+    #   step       -> insert an `analysis` step before each `setWeight` block
+    #   background -> run continuously across the whole rollout
+    mode: step
+    # Shared args passed to every AnalysisTemplate invocation. List of
+    # {name, value | valueFrom} entries, passed through verbatim.
+    args: []
+    # AnalysisTemplate definitions rendered as CRDs. Each entry must specify a
+    # unique `name` and a `metrics` list (Argo Rollouts metric spec). Optional
+    # `args` are scoped to that single template.
+    #
+    # Example (Prometheus / VictoriaMetrics — the prometheus provider talks to
+    # VictoriaMetrics directly via its PromQL-compatible /api/v1/query endpoint):
+    # templates:
+    #   - name: success-rate
+    #     metrics:
+    #       - name: success-rate
+    #         interval: 1m
+    #         successCondition: result[0] >= 0.95
+    #         failureLimit: 2
+    #         provider:
+    #           prometheus:
+    #             address: http://vmselect.monitoring:8481/select/0/prometheus
+    #             query: |
+    #               sum(rate(http_requests_total{status!~"5.."}[2m]))
+    #               / sum(rate(http_requests_total[2m]))
+    templates: []
+
 # Additional volumes on the output Deployment definition.
 volumes: []
 # - name: foo

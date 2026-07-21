@@ -1,33 +1,76 @@
-{{- if .Values.service.enabled }}
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ include "go.fullname" . }}
-  labels:
-    {{- include "go.labels" . | nindent 4 }}
-  {{- if and .Values.metrics.enabled .Values.metrics.serviceAnnotations.enabled }}
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: {{ include "go.metrics.port" . | quote }}
-    prometheus.io/path: {{ .Values.metrics.path }}
-    prometheus.io/scheme: {{ .Values.metrics.scheme }}
-  {{- end }}
+{{- define "go.service.body" -}}
 spec:
-  type: {{ .Values.service.type }}
+  type: {{ $.Values.service.type }}
   ports:
-    {{- if .Values.service.ports }}
-    {{- range .Values.service.ports }}
+    {{- if $.Values.service.ports }}
+    {{- range $.Values.service.ports }}
     - name: {{ .name }}
       port: {{ .port }}
       targetPort: {{ .targetPort | default .name }}
       protocol: {{ .protocol | default "TCP" }}
     {{- end }}
     {{- else }}
-    - port: {{ .Values.service.port }}
+    - port: {{ $.Values.service.port }}
       targetPort: http
       protocol: TCP
       name: http
     {{- end }}
   selector:
-    {{- include "go.selectorLabels" . | nindent 4 }}
+    {{- include "go.selectorLabels" $ | nindent 4 }}
+{{- end -}}
+
+{{- if .Values.service.enabled }}
+{{- $metricsAnnotations := and .Values.metrics.enabled .Values.metrics.serviceAnnotations.enabled }}
+
+{{- if and .Values.rollout.enabled .Values.rollout.canary.trafficRouting }}
+{{- /* Canary traffic-splitting mode: render a stable Service + a canary Service.
+       Argo Rollouts mutates their selectors at runtime to inject its
+       rollouts-pod-template-hash label so each routes to the right ReplicaSet. */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "go.canary.stableService" . }}
+  labels:
+    {{- include "go.labels" . | nindent 4 }}
+    app.kubernetes.io/rollouts-role: stable
+  {{- if $metricsAnnotations }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ include "go.metrics.port" . | quote }}
+    prometheus.io/path: {{ .Values.metrics.path }}
+    prometheus.io/scheme: {{ .Values.metrics.scheme }}
+  {{- end }}
+{{ include "go.service.body" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "go.canary.canaryService" . }}
+  labels:
+    {{- include "go.labels" . | nindent 4 }}
+    app.kubernetes.io/rollouts-role: canary
+  {{- if $metricsAnnotations }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ include "go.metrics.port" . | quote }}
+    prometheus.io/path: {{ .Values.metrics.path }}
+    prometheus.io/scheme: {{ .Values.metrics.scheme }}
+  {{- end }}
+{{ include "go.service.body" . }}
+{{- else }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "go.fullname" . }}
+  labels:
+    {{- include "go.labels" . | nindent 4 }}
+  {{- if $metricsAnnotations }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ include "go.metrics.port" . | quote }}
+    prometheus.io/path: {{ .Values.metrics.path }}
+    prometheus.io/scheme: {{ .Values.metrics.scheme }}
+  {{- end }}
+{{ include "go.service.body" . }}
+{{- end }}
 {{- end }}

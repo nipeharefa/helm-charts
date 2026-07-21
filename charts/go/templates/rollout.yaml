@@ -1,0 +1,56 @@
+{{- if .Values.rollout.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ include "go.fullname" . }}
+  labels:
+    {{- include "go.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ default .Values.replicaCount .Values.rollout.replicas }}
+  {{- end }}
+  revisionHistoryLimit: {{ .Values.rollout.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "go.selectorLabels" . | nindent 6 }}
+  template:
+    {{- include "go.podTemplateSpec" . | nindent 4 }}
+  strategy:
+    canary:
+      {{- if .Values.rollout.canary.trafficRouting }}
+      canaryService: {{ include "go.canary.canaryService" . }}
+      stableService: {{ include "go.canary.stableService" . }}
+      {{- end }}
+      maxSurge: {{ .Values.rollout.canary.maxSurge }}
+      maxUnavailable: {{ .Values.rollout.canary.maxUnavailable }}
+      {{- with .Values.rollout.canary.trafficRouting }}
+      trafficRouting:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and .Values.rollout.analysis.enabled (eq .Values.rollout.analysis.mode "background") .Values.rollout.analysis.templates }}
+      analysis:
+        templates:
+          {{- range .Values.rollout.analysis.templates }}
+          - templateName: {{ include "go.analysis.templateName" (dict "ctx" $ "entry" .) }}
+          {{- end }}
+        {{- with .Values.rollout.analysis.args }}
+        args:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      steps:
+        {{- if and .Values.rollout.analysis.enabled (eq .Values.rollout.analysis.mode "step") .Values.rollout.analysis.templates }}
+        {{- range .Values.rollout.analysis.templates }}
+        - analysis:
+            templates:
+              - templateName: {{ include "go.analysis.templateName" (dict "ctx" $ "entry" .) }}
+            {{- if $.Values.rollout.analysis.args }}
+            args:
+              {{- toYaml $.Values.rollout.analysis.args | nindent 14 }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- with .Values.rollout.canary.steps }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}

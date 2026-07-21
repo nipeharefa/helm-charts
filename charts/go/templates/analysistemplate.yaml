@@ -1,0 +1,22 @@
+{{- if and .Values.rollout.enabled .Values.rollout.analysis.enabled .Values.rollout.analysis.templates }}
+{{- range $entry := .Values.rollout.analysis.templates }}
+{{- $tplName := include "go.analysis.templateName" (dict "ctx" $ "entry" $entry) }}
+{{- if not $entry.metrics }}
+{{- fail (printf "rollout.analysis.templates[%s].metrics is required" $entry.name) }}
+{{- end }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ $tplName }}
+  labels:
+    {{- include "go.labels" $ | nindent 4 }}
+spec:
+  {{- with $entry.args }}
+  args:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  metrics:
+    {{- toYaml $entry.metrics | nindent 4 }}
+---
+{{- end }}
+{{- end }}

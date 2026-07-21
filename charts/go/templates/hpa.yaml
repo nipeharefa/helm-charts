@@ -7,8 +7,8 @@ metadata:
     {{- include "go.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
+    apiVersion: {{ include "go.workload.apiVersion" . }}
+    kind: {{ include "go.workload.kind" . }}
     name: {{ include "go.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
