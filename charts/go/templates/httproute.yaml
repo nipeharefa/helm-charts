@@ -1,6 +1,7 @@
 {{- if .Values.httpRoute.enabled -}}
 {{- $fullName := include "go.fullname" . -}}
 {{- $svcPort := .Values.service.port -}}
+{{- $useGatewayAPIRollout := and .Values.rollout.enabled .Values.rollout.canary.trafficRouting.gatewayAPI -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -31,8 +32,21 @@ spec:
       {{- toYaml . | nindent 8 }}
     {{- end }}
       backendRefs:
+        {{- if $useGatewayAPIRollout }}
+        {{- /* Gateway API + Argo Rollouts: dual backendRefs so the Rollout
+               controller can patch weights between stable and canary Services
+               at runtime. Initial weights 100/0 are nominal — Argo overwrites
+               them as the canary progresses. */}}
+        - name: {{ include "go.canary.stableService" $ }}
+          port: {{ $svcPort }}
+          weight: 100
+        - name: {{ include "go.canary.canaryService" $ }}
+          port: {{ $svcPort }}
+          weight: 0
+        {{- else }}
         - name: {{ $fullName }}
           port: {{ $svcPort }}
           weight: 1
+        {{- end }}
     {{- end }}
 {{- end }}

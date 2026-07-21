@@ -24,8 +24,14 @@ spec:
       maxSurge: {{ .Values.rollout.canary.maxSurge }}
       maxUnavailable: {{ .Values.rollout.canary.maxUnavailable }}
       {{- with .Values.rollout.canary.trafficRouting }}
+      {{- $tr := deepCopy . }}
+      {{- if $tr.gatewayAPI }}
+      {{- if not $tr.gatewayAPI.httpRoute }}
+      {{- $_ := set $tr.gatewayAPI "httpRoute" (include "go.fullname" $) }}
+      {{- end }}
+      {{- end }}
       trafficRouting:
-        {{- toYaml . | nindent 8 }}
+        {{- toYaml $tr | nindent 8 }}
       {{- end }}
       {{- if and .Values.rollout.analysis.enabled (eq .Values.rollout.analysis.mode "background") .Values.rollout.analysis.templates }}
       analysis:
