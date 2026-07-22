@@ -21,8 +21,43 @@ spec:
 
 {{- if .Values.service.enabled }}
 {{- $metricsAnnotations := and .Values.metrics.enabled .Values.metrics.serviceAnnotations.enabled }}
+{{- /* Pre-compute canary traffic-routing state to avoid nil-pointer panics when
+      `rollout.canary` is non-empty but `trafficRouting` is absent. */}}
+{{- $canaryTR := false -}}
+{{- if and .Values.rollout.canary .Values.rollout.canary.trafficRouting -}}
+{{- $canaryTR = .Values.rollout.canary.trafficRouting.enabled -}}
+{{- end }}
 
-{{- if and .Values.rollout.enabled .Values.rollout.canary.trafficRouting.enabled }}
+{{- if and .Values.rollout.enabled .Values.rollout.blueGreen }}
+{{- /* Blue-green mode: render an active Service + a preview Service.
+      Argo Rollouts swaps their selectors at promotion time; the active
+      Service always points at the serving ReplicaSet, while preview
+      points at the candidate. */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "go.fullname" . }}
+  labels:
+    {{- include "go.labels" . | nindent 4 }}
+    app.kubernetes.io/rollouts-role: active
+  {{- if $metricsAnnotations }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ include "go.metrics.port" . | quote }}
+    prometheus.io/path: {{ .Values.metrics.path }}
+    prometheus.io/scheme: {{ .Values.metrics.scheme }}
+  {{- end }}
+{{ include "go.service.body" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "go.fullname" . }}-preview
+  labels:
+    {{- include "go.labels" . | nindent 4 }}
+    app.kubernetes.io/rollouts-role: preview
+{{ include "go.service.body" . }}
+{{- else if and .Values.rollout.enabled $canaryTR }}
 {{- /* Canary traffic-splitting mode: render a stable Service + a canary Service.
        Argo Rollouts mutates their selectors at runtime to inject its
        rollouts-pod-template-hash label so each routes to the right ReplicaSet. */}}

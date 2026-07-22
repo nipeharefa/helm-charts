@@ -1,6 +1,11 @@
 {{- if .Values.rollout.enabled }}
-{{- /* Run provider validation unconditionally so misconfigurations fail loudly. */}}
+{{- if and .Values.rollout.blueGreen .Values.rollout.canary }}
+{{- fail "rollout.blueGreen and rollout.canary are both non-empty — pick exactly one strategy" }}
+{{- end }}
+{{- /* Run provider validation so traffic-routing misconfigurations fail loudly. */}}
+{{- if .Values.rollout.canary }}
 {{- $_ := include "go.canary.activeProvider" . -}}
+{{- end }}
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
@@ -17,25 +22,41 @@ spec:
       {{- include "go.selectorLabels" . | nindent 6 }}
   template:
     {{- include "go.podTemplateSpec" . | nindent 4 }}
+  {{- if or .Values.rollout.blueGreen .Values.rollout.canary }}
   strategy:
-    canary:
-      {{- if .Values.rollout.canary.trafficRouting.enabled }}
-      canaryService: {{ include "go.canary.canaryService" . }}
-      stableService: {{ include "go.canary.stableService" . }}
+    {{- if .Values.rollout.blueGreen }}
+    blueGreen:
+      activeService: {{ .Values.rollout.blueGreen.activeService | default (include "go.fullname" .) }}
+      previewService: {{ .Values.rollout.blueGreen.previewService | default (printf "%s-preview" (include "go.fullname" .)) }}
+      {{- if hasKey .Values.rollout.blueGreen "autoPromotionEnabled" }}
+      autoPromotionEnabled: {{ .Values.rollout.blueGreen.autoPromotionEnabled }}
       {{- end }}
-      maxSurge: {{ .Values.rollout.canary.maxSurge }}
-      maxUnavailable: {{ .Values.rollout.canary.maxUnavailable }}
-      {{- if .Values.rollout.canary.trafficRouting.enabled }}
-      {{- $tr := deepCopy .Values.rollout.canary.trafficRouting }}
+      {{- if hasKey .Values.rollout.blueGreen "scaleDownDelaySeconds" }}
+      scaleDownDelaySeconds: {{ .Values.rollout.blueGreen.scaleDownDelaySeconds }}
+      {{- end }}
+    {{- else }}
+    canary:
+      {{- with .Values.rollout.canary.trafficRouting }}
+      {{- if .enabled }}
+      canaryService: {{ include "go.canary.canaryService" $ }}
+      stableService: {{ include "go.canary.stableService" $ }}
+      {{- $tr := deepCopy . }}
       {{- /* Strip chart-only fields before handing off to Argo Rollouts. */}}
       {{- $_ := unset $tr "enabled" }}
       {{- $plugins := default (dict) $tr.plugins }}
       {{- $plugin := index $plugins "argoproj-labs/gatewayAPI" }}
       {{- if and $plugin (not $plugin.httpRoute) }}
-      {{- $_ := set $plugin "httpRoute" (include "go.fullname" .) }}
+      {{- $_ := set $plugin "httpRoute" (include "go.fullname" $) }}
       {{- end }}
       trafficRouting:
         {{- toYaml $tr | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      {{- if hasKey .Values.rollout.canary "maxSurge" }}
+      maxSurge: {{ .Values.rollout.canary.maxSurge }}
+      {{- end }}
+      {{- if hasKey .Values.rollout.canary "maxUnavailable" }}
+      maxUnavailable: {{ .Values.rollout.canary.maxUnavailable }}
       {{- end }}
       {{- if and .Values.rollout.analysis.enabled (eq .Values.rollout.analysis.mode "background") .Values.rollout.analysis.templates }}
       analysis:
@@ -48,6 +69,7 @@ spec:
           {{- toYaml . | nindent 10 }}
         {{- end }}
       {{- end }}
+      {{- if or (and .Values.rollout.analysis.enabled (eq .Values.rollout.analysis.mode "step") .Values.rollout.analysis.templates) .Values.rollout.canary.steps }}
       steps:
         {{- if and .Values.rollout.analysis.enabled (eq .Values.rollout.analysis.mode "step") .Values.rollout.analysis.templates }}
         {{- range .Values.rollout.analysis.templates }}
@@ -63,4 +85,7 @@ spec:
         {{- with .Values.rollout.canary.steps }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
 {{- end }}

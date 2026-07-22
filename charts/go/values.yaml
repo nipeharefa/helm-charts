@@ -143,10 +143,8 @@ autoscaling:
 #     Deployment. The two are mutually exclusive: the Deployment is removed.
 #   - The HPA (if `autoscaling.enabled` is true) is rewired to target the
 #     Rollout via scaleTargetRef.
-#   - The Service is split into a stable + canary pair when both
-#     `rollout.enabled` and `rollout.canary.trafficRouting.enabled` are true;
-#     otherwise the single Service is retained and the canary shifts weight
-#     purely by ReplicaSet sizing.
+#   - Leave both `canary` and `blueGreen` empty `{}` for a plain rolling
+#     update. Fill in exactly one to enable that strategy.
 #
 # MIGRATION NOTE: switching an existing release from Deployment to Rollout
 # leaves the old Deployment object in the cluster (Helm does not delete
@@ -159,60 +157,39 @@ rollout:
   # empty. Ignored when `autoscaling.enabled` is true (HPA owns the count).
   replicas: 1
   revisionHistoryLimit: 10
-  canary:
-    # MaxSurge / maxUnavailable passed verbatim to the Rollout's canary
-    # strategy. Defaults match Kubernetes RollingUpdate (25% surge, 0 unavailable).
-    maxSurge: "25%"
-    maxUnavailable: 0
-    # Ordered list of canary steps (setWeight / pause / experiment / analysis /
-    # setCanaryScale / plugin). Rendered verbatim under `strategy.canary.steps`.
-    # When `analysis.enabled` is true and `analysis.mode == "step"`, an analysis
-    # step referencing each rendered AnalysisTemplate is prepended to this list.
-    steps:
-      - setWeight: 25
-      - pause: { duration: 30s }
-      - setWeight: 50
-      - pause: { duration: 30s }
-      - setWeight: 100
-    # Traffic routing provider configuration. When `enabled` is true, the chart
-    # renders a stable + canary Service pair and the Rollout drives traffic
-    # splitting via the configured provider. When false, the Rollout shifts
-    # canary weight purely by ReplicaSet sizing (single Service).
-    #
-    # Exactly ONE provider must be set when `enabled: true`. Setting 2+ will
-    # fail `helm template` / `helm install` with a clear error.
-    #
-    # Built-in providers (see Argo Rollouts docs for the full shape):
-    #   nginx | alb | smi | istio | traefik | ambassador | app-mesh | google | sfx
-    #
-    # Plugin providers:
-    #   plugins."argoproj-labs/gatewayAPI"   (Gateway API — requires the
-    #   external plugin installed in the argo-rollouts controller, see
-    #   charts/go/README.md "Installing the Gateway API plugin")
-    #
-    # Examples:
-    #
-    # nginx ingress controller (built-in):
-    # trafficRouting:
-    #   enabled: true
-    #   nginx:
-    #     stableIngress: primary
-    #
-    # Gateway API plugin (Envoy Gateway / Istio / GKE / Kong / nginx Gateway
-    # Fabric / Cilium / etc. — also requires httpRoute.enabled=true so the chart
-    # renders the dual-backendRef HTTPRoute):
-    # trafficRouting:
-    #   enabled: true
-    #   plugins:
-    #     argoproj-labs/gatewayAPI:
-    #       httpRoute: ""        # defaults to <fullname>
-    #       namespace: ""        # defaults to the Rollout namespace
-    trafficRouting:
-      enabled: false
-    # Optional overrides for the auto-provisioned stable/canary Service names.
-    # Defaults: stable -> <fullname>, canary -> <fullname>-canary.
-    stableService: ""
-    canaryService: ""
+  # Rollout strategy. Leave BOTH empty `{}` for a plain rolling update (no
+  # canary, no blue-green). Fill in exactly one block to enable that strategy.
+  # Setting both non-empty fails `helm template`.
+  #
+  # The chart auto-detects which strategy to use based on which block is
+  # non-empty. When `blueGreen` is used, the chart renders an active Service
+  # (`<fullname>`) + a preview Service (`<fullname>-preview`). When `canary`
+  # uses `trafficRouting.enabled: true`, a stable + canary Service pair is
+  # rendered instead.
+  #
+  # Canary example:
+  #   canary:
+  #     maxSurge: "25%"
+  #     maxUnavailable: 0
+  #     steps:
+  #       - setWeight: 25
+  #       - pause: { duration: 30s }
+  #       - setWeight: 50
+  #       - pause: { duration: 30s }
+  #       - setWeight: 100
+  #     trafficRouting:
+  #       enabled: true
+  #       nginx:
+  #         stableIngress: primary
+  #     stableService: ""   # defaults to <fullname>
+  #     canaryService: ""   # defaults to <fullname>-canary
+  #
+  # Blue-green example:
+  #   blueGreen:
+  #     autoPromotionEnabled: false
+  #     scaleDownDelaySeconds: 30
+  canary: {}
+  blueGreen: {}
   analysis:
     # Master toggle. When true, AnalysisTemplate CRDs are rendered from
     # `templates` and referenced by the Rollout. When false, no analysis runs
