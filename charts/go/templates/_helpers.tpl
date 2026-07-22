@@ -191,7 +191,8 @@ be parsed as nested keys.
 */}}
 {{- define "go.canary.httpRouteName" -}}
 {{- $override := "" }}
-{{- $plugins := default (dict) .Values.rollout.canary.trafficRouting.plugins }}
+{{- $tr := default (dict) .Values.rollout.canary.trafficRouting }}
+{{- $plugins := default (dict) $tr.plugins }}
 {{- with (index $plugins "argoproj-labs/gatewayAPI") }}
 {{- $override = .httpRoute }}
 {{- end }}
@@ -212,17 +213,18 @@ This helper MUST be invoked (even if its output is discarded) on every code
 path that touches trafficRouting so that the validation runs unconditionally.
 */}}
 {{- define "go.canary.activeProvider" -}}
+{{- $tr := default (dict) .Values.rollout.canary.trafficRouting }}
 {{- $providers := list -}}
-{{- range $k, $v := .Values.rollout.canary.trafficRouting }}
+{{- range $k, $v := $tr }}
 {{- if and (ne $k "enabled") (ne $k "plugins") $v }}
 {{- $providers = append $providers $k }}
 {{- end }}
 {{- end }}
-{{- $plugins := default (dict) .Values.rollout.canary.trafficRouting.plugins }}
+{{- $plugins := default (dict) $tr.plugins }}
 {{- if (index $plugins "argoproj-labs/gatewayAPI") }}
 {{- $providers = append $providers "gatewayapi" }}
 {{- end }}
-{{- if and .Values.rollout.canary.trafficRouting.enabled (eq (len $providers) 0) }}
+{{- if and $tr.enabled (eq (len $providers) 0) }}
 {{- fail "rollout.canary.trafficRouting.enabled is true but no provider is configured. Set exactly one of: nginx | alb | smi | istio | traefik | ambassador | app-mesh | google | sfx | plugins.\"argoproj-labs/gatewayAPI\"" }}
 {{- end }}
 {{- if gt (len $providers) 1 }}

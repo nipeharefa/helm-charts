@@ -1,7 +1,7 @@
 {{- if .Values.httpRoute.enabled -}}
 {{- $fullName := include "go.fullname" . -}}
 {{- $svcPort := .Values.service.port -}}
-{{- $useGatewayAPIRollout := and .Values.rollout.enabled .Values.rollout.canary.trafficRouting.enabled (eq (include "go.canary.activeProvider" .) "gatewayapi") -}}
+{{- $useGatewayAPIRollout := and .Values.rollout.enabled (dig "canary" "trafficRouting" "enabled" false .Values.rollout) (eq (include "go.canary.activeProvider" .) "gatewayapi") -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
