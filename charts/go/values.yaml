@@ -236,6 +236,15 @@ volumeMounts: []
 #   mountPath: "/etc/foo"
 #   readOnly: true
 
+# Additional containers (sidecars) rendered alongside the main container.
+# They share the same pod (and thus the same network namespace).
+extraContainers: []
+# - name: sidecar
+#   image: nginx
+#   volumeMounts:
+#     - name: config-volume
+#       mountPath: /etc/sidecar
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

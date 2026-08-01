@@ -370,6 +370,9 @@ spec:
           {{- end }}
         {{- end }}
       {{- end }}
+      {{- with .Values.extraContainers }}
+      {{- toYaml . | nindent 4 }}
+      {{- end }}
   {{- if or .Values.volumes (and .Values.configMap.enabled .Values.configMap.mountPath) .Values.persistence.enabled }}
   volumes:
     {{- with .Values.volumes }}
